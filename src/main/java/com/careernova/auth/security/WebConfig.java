@@ -26,10 +26,7 @@ public class WebConfig {
         this.customOAuth2UserService = customOAuth2UserService;
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {

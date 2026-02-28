@@ -1,6 +1,9 @@
 package com.careernova.auth.security;
 
+import com.careernova.auth.dto.LoginResponseDto;
 import com.careernova.auth.enums.AuthProviderType;
+import com.careernova.auth.service.AuthService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -11,7 +14,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
+
+    private final AuthService authService;
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest)
@@ -30,13 +36,15 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         Map<String, Object> attributes =
                 new HashMap<>(oAuth2User.getAttributes());
 
-        // Normalize attributes across providers
         normalizeAttributes(attributes, providerType);
 
-        return new CustomOAuth2User(
-                attributes,
-                "id" // common key
-        );
+        LoginResponseDto loginResponse =
+                authService.processOAuthLogin(attributes, providerType);
+
+        attributes.put("jwt", loginResponse.getAccessToken());
+        attributes.put("newUser", loginResponse.isNewUser());
+
+        return new CustomOAuth2User(attributes, "id");
     }
 
     private void normalizeAttributes(

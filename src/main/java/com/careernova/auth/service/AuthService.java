@@ -5,11 +5,10 @@ import com.careernova.auth.entity.User;
 import com.careernova.auth.enums.AuthProviderType;
 import com.careernova.auth.repository.UserRepository;
 import com.careernova.auth.security.JwtService;
-import com.careernova.auth.security.OAuthUtil;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+
+import java.util.Map;
 
 @Service
 public class AuthService {
@@ -31,20 +30,35 @@ public class AuthService {
     /* =========================
        OAuth2 LOGIN
        ========================= */
-    public ResponseEntity<?> handleOAuth2LoginRequest(
-            OAuth2User oAuth2User,
-            String registrationId
+    public LoginResponseDto processOAuthLogin(
+            Map<String, Object> attributes,
+            AuthProviderType providerType
     ) {
 
-        AuthProviderType providerType =
-                OAuthUtil.getAuthProviderTypeFromRegistrationId(registrationId);
+        String providerId = null;
+        String email = (String) attributes.get("email");
 
-        String providerId =
-                OAuthUtil.determineProviderUserId(oAuth2User, registrationId);
+        switch (providerType) {
 
-        if (providerId == null) {
-            return ResponseEntity.badRequest()
-                    .body("Invalid OAuth provider data");
+            case GOOGLE:
+                // Google OIDC uses "sub"
+                providerId = (String) attributes.get("sub");
+                break;
+
+            case GITHUB:
+                // GitHub uses "id"
+                Object githubId = attributes.get("id");
+                if (githubId != null) {
+                    providerId = githubId.toString();
+                }
+                break;
+
+            default:
+                throw new RuntimeException("Unsupported provider");
+        }
+
+        if (providerId == null || email == null) {
+            throw new RuntimeException("Invalid OAuth provider data");
         }
 
         User user = userRepository
@@ -55,15 +69,10 @@ public class AuthService {
 
         if (user == null) {
 
-            String email = oAuth2User.getAttribute("email");
-            if (email == null) {
-                return ResponseEntity.badRequest()
-                        .body("Email not provided by OAuth provider");
-            }
-
             if (userRepository.existsByEmail(email)) {
-                return ResponseEntity.status(409)
-                        .body("Email already registered using another login method");
+                throw new RuntimeException(
+                        "Email already registered using another login method"
+                );
             }
 
             user = new User();
@@ -78,57 +87,46 @@ public class AuthService {
 
         String jwt = jwtService.generateToken(user.getEmail());
 
-        return ResponseEntity.ok(
-                LoginResponseDto.builder()
-                        .accessToken(jwt)
-                        .tokenType("Bearer")
-                        .expiresIn(3600)
-                        .userId(user.getId())
-                        .email(user.getEmail())
-                        .providerType(user.getAuthProviderType())
-                        .newUser(isNewUser)
-                        .build()
-        );
+        return LoginResponseDto.builder()
+                .accessToken(jwt)
+                .tokenType("Bearer")
+                .expiresIn(3600)
+                .userId(user.getId())
+                .email(user.getEmail())
+                .providerType(user.getAuthProviderType())
+                .newUser(isNewUser)
+                .build();
     }
-
     /* =========================
-       EMAIL + PASSWORD LOGIN
-       ========================= */
-    public ResponseEntity<?> handleEmailPasswordLogin(
-            String email,
-            String rawPassword
-    ) {
+   EMAIL + PASSWORD LOGIN
+   ========================= */
+    public LoginResponseDto loginWithEmailPassword(String email, String rawPassword) {
 
         User user = userRepository.findByEmail(email)
-                .orElse(null);
-
-        if (user == null) {
-            return ResponseEntity.status(401)
-                    .body("Invalid email or password");
-        }
+                .orElseThrow(() ->
+                        new RuntimeException("Invalid email or password")
+                );
 
         if (user.getAuthProviderType() != AuthProviderType.EMAIL) {
-            return ResponseEntity.status(400)
-                    .body("Please login using " + user.getAuthProviderType());
+            throw new RuntimeException(
+                    "Please login using " + user.getAuthProviderType()
+            );
         }
 
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
-            return ResponseEntity.status(401)
-                    .body("Invalid email or password");
+            throw new RuntimeException("Invalid email or password");
         }
 
         String jwt = jwtService.generateToken(user.getEmail());
 
-        return ResponseEntity.ok(
-                LoginResponseDto.builder()
-                        .accessToken(jwt)
-                        .tokenType("Bearer")
-                        .expiresIn(3600)
-                        .userId(user.getId())
-                        .email(user.getEmail())
-                        .providerType(AuthProviderType.EMAIL)
-                        .newUser(false)
-                        .build()
-        );
+        return LoginResponseDto.builder()
+                .accessToken(jwt)
+                .tokenType("Bearer")
+                .expiresIn(3600)
+                .userId(user.getId())
+                .email(user.getEmail())
+                .providerType(AuthProviderType.EMAIL)
+                .newUser(false)
+                .build();
     }
 }
