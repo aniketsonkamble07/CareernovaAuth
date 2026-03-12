@@ -2,17 +2,17 @@ package com.careernova.auth.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
+@Data
 public class LoginRequestDto {
 
-    @Email(message = "Invalid email format")
     @NotBlank(message = "Email is required")
+    @Email(message = "Invalid email format")
     private String email;
 
     @NotBlank(message = "Password is required")
     private String password;
+
+    private boolean rememberMe; // Optional
 }
